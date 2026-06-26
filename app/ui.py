@@ -246,15 +246,27 @@ class PerformanceManagerApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _show_startup_overlay(self):
-        self.overlay = ScanOverlay(self, self.scan_manager, on_complete=self._on_startup_done)
+        self.overlay = ScanOverlay(self, on_complete=self._on_startup_done)
         self.overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
         self.overlay.lift()
+        self.scan_manager.start_scan(callback=self._on_scan_complete)
+        self._poll_scan_progress()
+
+    def _poll_scan_progress(self):
+        if not self.overlay:
+            return
+        if self.overlay.winfo_exists():
+            self.overlay.set_status(self.scan_manager.get_progress())
+            self.after(200, self._poll_scan_progress)
 
     def _post_init(self):
         self.toast = ToastManager(self)
         self._switch_page("dashboard")
         self.update()
-        self.scan_manager.start_scan()
+
+    def _on_scan_complete(self):
+        if self.overlay and self.overlay.winfo_exists():
+            self.overlay.finish()
 
     def _on_startup_done(self):
         self.overlay = None

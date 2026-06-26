@@ -1,25 +1,24 @@
 import tkinter as tk
 import customtkinter as ctk
 import math
-import time
 
 BG = "#050510"
 PURPLE = "#8b5cf6"
-PURPLE_DIM = "#4c1d95"
 TEXT = "#c4b5fd"
 TEXT_DIM = "#6b7280"
 
 class ScanOverlay(ctk.CTkFrame):
-    def __init__(self, parent, scan_manager, on_complete=None):
+    def __init__(self, parent, on_complete=None):
         super().__init__(parent, fg_color=BG)
-        self.scan_manager = scan_manager
         self.on_complete = on_complete
         self._angle = 0
         self._pulse = 0.0
         self._dot_count = 0
         self._anim_id = None
+        self._done = False
         self._fading = False
         self._alpha = 1.0
+        self._status_text = "Starting scan..."
         self._build()
         self._animate()
 
@@ -30,13 +29,22 @@ class ScanOverlay(ctk.CTkFrame):
 
         self.title_label = ctk.CTkLabel(self, text="PM Performance Manager",
                                          font=ctk.CTkFont(size=26, weight="bold"), text_color=TEXT)
-        self.title_label.place(relx=0.5, rely=0.48, anchor="center")
+        self.title_label.place(relx=0.5, rely=0.47, anchor="center")
 
         self.dots_label = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=16), text_color=PURPLE)
-        self.dots_label.place(relx=0.5, rely=0.58, anchor="center")
+        self.dots_label.place(relx=0.5, rely=0.57, anchor="center")
 
-        self.status_label = ctk.CTkLabel(self, text="Initializing...", font=ctk.CTkFont(size=12), text_color=TEXT_DIM)
-        self.status_label.place(relx=0.5, rely=0.64, anchor="center")
+        self.status_label = ctk.CTkLabel(self, text=self._status_text,
+                                          font=ctk.CTkFont(size=12), text_color=TEXT_DIM)
+        self.status_label.place(relx=0.5, rely=0.63, anchor="center")
+
+    def set_status(self, text):
+        self._status_text = text
+        if hasattr(self, 'status_label') and self.status_label.winfo_exists():
+            self.status_label.configure(text=text)
+
+    def finish(self):
+        self._done = True
 
     def _on_resize(self, event):
         self._draw_triangle()
@@ -110,34 +118,35 @@ class ScanOverlay(ctk.CTkFrame):
 
         dots = "." * (1 + (self._dot_count // 8))
         self.dots_label.configure(text=f"Loading{dots}")
+        self.status_label.configure(text=self._status_text)
 
-        progress = self.scan_manager.get_progress()
-        if progress:
-            self.status_label.configure(text=progress)
-
-        if not self.scan_manager.is_running() and not self._fading:
+        if self._done and not self._fading:
             self._fading = True
-            self._start_fade()
+            self.after(400, self._start_fade)
             return
 
         self._anim_id = self.after(35, self._animate)
 
     def _start_fade(self):
-        self._alpha -= 0.05
-        if self._alpha <= 0:
-            self.destroy()
-            if self.on_complete:
-                self.on_complete()
+        if not self.winfo_exists():
             return
-        self.configure(fg_color=self._blend(BG, self._alpha))
-        self.canvas.configure(bg=self._blend(BG, self._alpha))
-        for w in [self.title_label, self.dots_label, self.status_label]:
-            c = w.cget("text_color")
-            if c and c != "transparent":
-                try:
-                    w.configure(text_color=self._blend_text(c, self._alpha))
-                except:
-                    pass
+        self._alpha -= 0.04
+        if self._alpha <= 0:
+            cb = self.on_complete
+            self.destroy()
+            if cb:
+                cb()
+            return
+        try:
+            self.configure(fg_color=self._blend(BG, self._alpha))
+            self.canvas.configure(bg=self._blend(BG, self._alpha))
+            for w in [self.title_label, self.dots_label, self.status_label]:
+                if w.winfo_exists():
+                    c = w.cget("text_color")
+                    if c and c != "transparent":
+                        w.configure(text_color=self._blend_text(c, self._alpha))
+        except:
+            pass
         self.after(25, self._start_fade)
 
     def _blend(self, color, alpha):
