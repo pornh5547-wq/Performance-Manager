@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import threading
 import time
+import traceback
 from app.config import Config, log
 from app.notifications import ToastManager
 from app.pages.dashboard import DashboardPage
@@ -85,9 +86,9 @@ TOPBAR_BG = "#2d0d5e"
 
 COLOR_THEMES = {
     "purple": lambda: theme_path("purple"),
-    "dark-blue": lambda: theme_path("purple"),
-    "blue": lambda: theme_path("purple"),
-    "green": lambda: theme_path("purple"),
+    "dark-blue": lambda: theme_path("dark-blue"),
+    "blue": lambda: theme_path("blue"),
+    "green": lambda: theme_path("green"),
 }
 
 PAGE_CLASSES = {
@@ -103,27 +104,43 @@ PAGE_CLASSES = {
 class PerformanceManagerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.config = Config()
-        self.current_page = None
-        self.nav_buttons = {}
-        self.page_frames = {}
-        self.scheduler = MaintenanceScheduler(self.config)
-        self.plugin_loader = PluginLoader()
-        self.toast = None
-        self._slide_after_id = None
-        self.scan_manager = ScanManager()
-        self.config.scan_manager = self.scan_manager
+        try:
+            self.config = Config()
+            self.current_page = None
+            self.nav_buttons = {}
+            self.page_frames = {}
+            self.scheduler = MaintenanceScheduler(self.config)
+            self.plugin_loader = PluginLoader()
+            self.toast = None
+            self._slide_after_id = None
+            self._page_transitioning = False
+            self.scan_manager = ScanManager()
+            self.config.scan_manager = self.scan_manager
 
-        self._apply_theme()
+            self._apply_theme()
 
-        self.title("PM Performance Manager")
-        self.geometry("1200x780")
-        self.minsize(960, 640)
+            self.title("PM Performance Manager")
+            self.geometry("1200x780")
+            self.minsize(960, 640)
 
-        self._build_layout()
-        self._show_startup_overlay()
-        self._bind_events()
-        self._post_init()
+            self._build_layout()
+            self._show_startup_overlay()
+            self._bind_events()
+            self._post_init()
+        except Exception as e:
+            log(f"App init failed: {traceback.format_exc()}")
+            self._show_fatal_error(str(e))
+
+    def _show_fatal_error(self, msg):
+        try:
+            self.geometry("600x250")
+            f = ctk.CTkFrame(self, fg_color="#1e293b", corner_radius=12)
+            f.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.8, relheight=0.6)
+            ctk.CTkLabel(f, text="\u26a0\ufe0f Startup Error", font=ctk.CTkFont(size=18, weight="bold"), text_color="#f87171").pack(pady=(30, 10))
+            ctk.CTkLabel(f, text=msg, font=ctk.CTkFont(size=12), text_color="#94a3b8", wraplength=400).pack(pady=10, padx=20)
+            ctk.CTkButton(f, text="Close", command=self.destroy, fg_color="#dc2626", hover_color="#b91c1c", width=120).pack(pady=20)
+        except:
+            self.destroy()
 
     def _apply_theme(self):
         mode = self.config.get("appearance_mode", "Dark")
@@ -151,6 +168,10 @@ class PerformanceManagerApp(ctk.CTk):
         self.content_frame.grid_propagate(False)
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
+
+        self.loading_overlay = ctk.CTkFrame(self.content_frame, fg_color=CONTENT_BG, corner_radius=0)
+        self.loading_lbl = ctk.CTkLabel(self.loading_overlay, text="Loading...", font=ctk.CTkFont(size=16, weight="bold"), text_color="#a78bfa")
+        self.loading_lbl.place(relx=0.5, rely=0.5, anchor="center")
 
         self._build_topbar()
         self._build_navbar()
@@ -253,44 +274,60 @@ class PerformanceManagerApp(ctk.CTk):
     def _build_pages(self):
         self._page_titles = {k: v for k, v in NAV_ITEMS}
         for page_key, cls in PAGE_CLASSES.items():
-            frame = cls(self.content_frame, self.config, self.scheduler) if page_key == "settings" else cls(self.content_frame, self.config)
-            self.page_frames[page_key] = frame
+            try:
+                if page_key == "settings":
+                    frame = cls(self.content_frame, self.config, self.scheduler)
+                else:
+                    frame = cls(self.content_frame, self.config)
+                self.page_frames[page_key] = frame
+            except Exception as e:
+                log(f"Failed to build page {page_key}: {traceback.format_exc()}")
 
     def _switch_page(self, page_key):
+        if self._page_transitioning:
+            return
+        self._page_transitioning = True
+
         for key, btn in self.nav_buttons.items():
-            if key == page_key:
-                btn.configure(fg_color=NAV_ACTIVE, text_color=NAV_TEXT)
-            else:
-                btn.configure(fg_color="transparent", text_color="#a1a1aa")
+            try:
+                if key == page_key:
+                    btn.configure(fg_color=NAV_ACTIVE, text_color=NAV_TEXT)
+                else:
+                    btn.configure(fg_color="transparent", text_color="#a1a1aa")
+            except:
+                pass
 
         if self.current_page == page_key:
+            self._page_transitioning = False
             return
 
         old = self.page_frames.get(self.current_page) if self.current_page else None
         new_page = self.page_frames.get(page_key)
         if not new_page:
+            self._page_transitioning = False
             return
 
-        # Cancel any in-progress slide animation immediately
         if hasattr(self, '_slide_after_id') and self._slide_after_id:
-            self.after_cancel(self._slide_after_id)
+            try:
+                self.after_cancel(self._slide_after_id)
+            except:
+                pass
             self._slide_after_id = None
 
-        # Remove old page from display
         if old:
-            if hasattr(old, 'stop_monitoring'):
-                old.stop_monitoring()
-            old.place_forget()
-
-        if hasattr(new_page, 'start_monitoring'):
-            new_page.start_monitoring()
-        if hasattr(new_page, 'on_activate'):
-            new_page.on_activate()
+            try:
+                if hasattr(old, 'stop_monitoring'):
+                    old.stop_monitoring()
+                old.place_forget()
+            except:
+                pass
 
         self.current_page = page_key
-        self.page_title.configure(text=self._page_titles.get(page_key, page_key.capitalize()))
+        try:
+            self.page_title.configure(text=self._page_titles.get(page_key, page_key.capitalize()))
+        except:
+            pass
 
-        # Animate new page: slide in from the right
         cw = self.content_frame.winfo_width()
         if cw < 20:
             cw = max(self.content_frame.winfo_reqwidth(), 900)
@@ -298,9 +335,18 @@ class PerformanceManagerApp(ctk.CTk):
         if ch < 20:
             ch = 500
 
-        new_page.configure(width=cw, height=ch)
-        new_page.place(x=cw, y=0)
-        new_page.lift()
+        try:
+            new_page.configure(width=cw, height=ch)
+            new_page.place(x=cw, y=0)
+            new_page.lift()
+        except:
+            self._page_transitioning = False
+            return
+
+        self.loading_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        self.loading_overlay.lift()
+        self.loading_lbl.configure(text="Loading...")
+        self.update_idletasks()
 
         steps = 10
         interval = 15
@@ -309,17 +355,63 @@ class PerformanceManagerApp(ctk.CTk):
             if not self.winfo_exists():
                 return
             if step >= steps:
-                new_page.place(x=0, y=0, relwidth=1, relheight=1)
+                try:
+                    new_page.place(x=0, y=0, relwidth=1, relheight=1)
+                except:
+                    pass
                 self._slide_after_id = None
+                self._activate_page(new_page)
                 return
-            new_x = int(cw * (steps - step - 1) / steps)
-            new_page.place_configure(x=new_x)
+            try:
+                new_x = int(cw * (steps - step - 1) / steps)
+                new_page.place_configure(x=new_x)
+            except:
+                pass
             self._slide_after_id = new_page.after(interval, lambda: slide(step + 1))
 
         slide(0)
 
+    def _activate_page(self, new_page):
+        self.after_idle(lambda: self._do_activate(new_page))
+
+    def _do_activate(self, new_page):
+        try:
+            if hasattr(new_page, 'start_monitoring'):
+                new_page.start_monitoring()
+            if hasattr(new_page, 'on_activate'):
+                new_page.on_activate()
+        except Exception as e:
+            log(f"Page activation error: {traceback.format_exc()}")
+        try:
+            self.loading_overlay.place_forget()
+        except:
+            pass
+        self._page_transitioning = False
+
     def _bind_events(self):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind("<Control-w>", lambda e: self._on_close())
+        self.bind("<Control-W>", lambda e: self._on_close())
+        self.bind("<Control-Tab>", lambda e: self._cycle_page(1))
+        self.bind("<Escape>", self._dismiss_toast)
+
+    def _page_order(self):
+        return [k for k, _ in NAV_ITEMS]
+
+    def _cycle_page(self, direction):
+        order = self._page_order()
+        if self.current_page not in order:
+            return
+        idx = order.index(self.current_page)
+        idx = (idx + direction) % len(order)
+        self._switch_page(order[idx])
+
+    def _dismiss_toast(self, event=None):
+        if self.toast and hasattr(self.toast, 'dismiss'):
+            try:
+                self.toast.dismiss()
+            except:
+                pass
 
     def _show_startup_overlay(self):
         self._overlay_start_time = time.time()
@@ -333,27 +425,40 @@ class PerformanceManagerApp(ctk.CTk):
     def _poll_scan_and_overlay(self):
         if not self.overlay:
             return
-        if not self.overlay.winfo_exists():
+        try:
+            if not self.overlay.winfo_exists():
+                return
+        except:
             return
         self._scan_is_done = not self.scan_manager.is_running()
-        self.overlay.set_status(self.scan_manager.get_progress())
+        try:
+            self.overlay.set_status(self.scan_manager.get_progress())
+        except:
+            pass
         if self._scan_is_done:
             self._finish_overlay_if_ready()
         else:
             self.after(200, self._poll_scan_and_overlay)
 
     def _post_init(self):
-        self.toast = ToastManager(self)
+        try:
+            self.toast = ToastManager(self)
+        except:
+            pass
         self._switch_page("dashboard")
         self.update()
 
     def _finish_overlay_if_ready(self):
         elapsed = time.time() - getattr(self, '_overlay_start_time', 0)
-        if elapsed < 8.0:
-            self.after(int((8.0 - elapsed) * 1000) + 50, self._finish_overlay_if_ready)
+        if elapsed < 1.5:
+            self.after(int((1.5 - elapsed) * 1000) + 50, self._finish_overlay_if_ready)
             return
-        if self.overlay and self.overlay.winfo_exists():
-            self.overlay.finish()
+        if self.overlay:
+            try:
+                if self.overlay.winfo_exists():
+                    self.overlay.finish()
+            except:
+                self._on_startup_done()
 
     def _on_startup_done(self):
         self.overlay = None
@@ -361,7 +466,10 @@ class PerformanceManagerApp(ctk.CTk):
         self.after(50, self._post_startup)
 
     def _post_startup(self):
-        self.status_text.configure(text="Ready")
+        try:
+            self.status_text.configure(text="Ready")
+        except:
+            pass
         self._update_scan_status()
         self._finish_init()
         self._schedule_periodic_scan()
@@ -370,7 +478,10 @@ class PerformanceManagerApp(ctk.CTk):
         self.after(300000, self._do_periodic_scan)
 
     def _do_periodic_scan(self):
-        self.status_text.configure(text="Scanning...")
+        try:
+            self.status_text.configure(text="Scanning...")
+        except:
+            pass
         log("Starting periodic 5-minute scan")
         self.scan_manager.start_scan()
         self._poll_periodic_scan()
@@ -380,21 +491,30 @@ class PerformanceManagerApp(ctk.CTk):
         if self.scan_manager.is_running():
             self.after(500, self._poll_periodic_scan)
         else:
-            self.status_text.configure(text="Ready")
+            try:
+                self.status_text.configure(text="Ready")
+            except:
+                pass
             self._update_scan_status()
             log("Periodic scan complete")
 
     def _update_scan_status(self):
         ago = self.scan_manager.last_scan_ago()
-        self.scan_status.configure(text=f"Scan: {ago}")
+        try:
+            self.scan_status.configure(text=f"Scan: {ago}")
+        except:
+            pass
 
     def _finish_init(self):
         try:
             if self.config.get("scheduled_maintenance", False):
                 self.scheduler.start()
             if self.config.get("plugins_enabled", True):
-                loaded = self.plugin_loader.load_all()
-                log(f"Loaded {len(loaded)} plugins")
+                try:
+                    loaded = self.plugin_loader.load_all()
+                    log(f"Loaded {len(loaded)} plugins")
+                except Exception as e:
+                    log(f"Plugin load error: {e}")
             if self.config.get("check_updates", True):
                 UpdateChecker().check(lambda r: self.after(0, lambda: self._on_update_check(r)))
             log("Application started")
@@ -403,20 +523,38 @@ class PerformanceManagerApp(ctk.CTk):
 
     def _on_update_check(self, result):
         if result.get("has_update"):
-            self.update_indicator.configure(text="Update available", text_color="#f59e0b")
+            try:
+                self.update_indicator.configure(text="Update available", text_color="#f59e0b")
+            except:
+                pass
 
     def show_toast(self, message, type="info", duration=3.0):
         if self.toast:
-            self.toast.show(message, type, duration)
+            try:
+                self.toast.show(message, type, duration)
+            except:
+                pass
 
     def _on_close(self):
         log("Application shutting down")
-        self.scheduler.stop()
-        self.plugin_loader.unload_all()
+        try:
+            self.scheduler.stop()
+        except:
+            pass
+        try:
+            self.plugin_loader.unload_all()
+        except:
+            pass
         for frame in self.page_frames.values():
-            if hasattr(frame, 'stop_monitoring'):
-                frame.stop_monitoring()
-        self.destroy()
+            try:
+                if hasattr(frame, 'stop_monitoring'):
+                    frame.stop_monitoring()
+            except:
+                pass
+        try:
+            self.destroy()
+        except:
+            pass
 
     def run(self):
         self.mainloop()

@@ -112,6 +112,20 @@ def clean_prefetch():
     log(f"Prefetch cleanup: {cleaned} files removed, {format_size(freed_bytes)} freed")
     return {"cleaned": cleaned, "freed_bytes": freed_bytes}
 
+def clean_browser_cache():
+    cleaned = 0
+    freed_bytes = 0
+    for path in BROWSER_CACHE_PATHS:
+        if os.path.exists(path):
+            try:
+                freed_bytes += get_size(path)
+                shutil.rmtree(path, ignore_errors=True)
+                cleaned += 1
+            except:
+                pass
+    log(f"Browser cache cleanup: {cleaned} caches cleared, {format_size(freed_bytes)} freed")
+    return {"cleaned": cleaned, "freed_bytes": freed_bytes}
+
 def clean_recycle_bin():
     result = run('rd /s /q %systemdrive%\\$Recycle.Bin', shell=True)
     if result:
@@ -132,7 +146,7 @@ def run_full_cleanup():
     results = {
         "temp": clean_temp_files(),
         "shader": clean_shader_cache(),
-        "browser": clean_browser_cache() if 'clean_browser_cache' in dir() else {"freed_bytes": 0},
+        "browser": clean_browser_cache(),
         "prefetch": clean_prefetch(),
     }
     total_freed = sum(r.get('freed_bytes', 0) for r in results.values())

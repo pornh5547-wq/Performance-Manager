@@ -6,6 +6,8 @@ def get_hosts_path():
 def read_hosts():
     path = get_hosts_path()
     entries = []
+    if not os.path.exists(path):
+        return entries
     try:
         with open(path, 'r') as f:
             for i, line in enumerate(f, 1):
@@ -68,8 +70,11 @@ def toggle_entry(entry):
         idx = entry["line"] - 1
         if 0 <= idx < len(lines):
             line = lines[idx]
-            if line.startswith('#'):
-                lines[idx] = line.lstrip('#')
+            stripped = line.lstrip()
+            if stripped.startswith('#'):
+                rest = stripped[1:].lstrip()
+                indent = line[:len(line) - len(stripped)]
+                lines[idx] = indent + rest + ('\n' if not rest.endswith('\n') else '')
             else:
                 lines[idx] = '#' + line
         with open(path, 'w') as f:

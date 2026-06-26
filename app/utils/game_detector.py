@@ -15,17 +15,17 @@ class GameDetector:
     def __init__(self):
         self.games = []
         self.platforms = {
-            "Steam": self.detect_steam_games,
-            "Xbox App": self.detect_xbox_games,
-            "Battle.net": self.detect_battlenet_games,
-            "Epic Games": self.detect_epic_games,
+            "Steam": "detect_steam_games",
+            "Xbox App": "detect_xbox_games",
+            "Battle.net": "detect_battlenet_games",
+            "Epic Games": "detect_epic_games",
         }
 
     def detect_all(self):
         self.games = []
-        for platform, detector in self.platforms.items():
+        for platform, method_name in self.platforms.items():
             try:
-                games = detector()
+                games = getattr(self, method_name)()
                 for game in games:
                     game["platform"] = platform
                 self.games.extend(games)
@@ -78,12 +78,15 @@ class GameDetector:
                                 acf_content = f.read()
                             name_match = re.search(r'"name"\s+"([^"]+)"', acf_content)
                             appid_match = re.search(r'"appid"\s+"(\d+)"', acf_content)
+                            installdir_match = re.search(r'"installdir"\s+"([^"]+)"', acf_content)
                             if name_match:
                                 appid = appid_match.group(1) if appid_match else ""
+                                installdir = installdir_match.group(1) if installdir_match else ""
+                                install_path = os.path.join(lib_path, 'common', installdir) if installdir else lib_path
                                 games.append({
                                     "name": name_match.group(1),
                                     "appid": appid,
-                                    "install_path": lib_path,
+                                    "install_path": install_path,
                                 })
                         except:
                             pass
@@ -208,6 +211,15 @@ class GameDetector:
         return len(self.games)
 
     def launch_game(self, game):
+        if game.get("platform") == "Steam" and game.get("appid"):
+            steam_path = "C:\\Program Files (x86)\\Steam\\steam.exe"
+            alt_steam = os.path.join(os.environ.get('ProgramFiles(x86)', ''), 'Steam', 'steam.exe')
+            for sp in [steam_path, alt_steam]:
+                if os.path.exists(sp):
+                    subprocess.Popen([sp, f'steam://rungameid/{game["appid"]}'],
+                                     startupinfo=SI, creationflags=NO_WINDOW)
+                    log(f"Launched Steam game: {game['name']}")
+                    return True
         exe = game.get("executable", "")
         install_path = game.get("install_path", "")
         if exe and os.path.exists(exe):
@@ -221,11 +233,5 @@ class GameDetector:
                         subprocess.Popen([os.path.join(root, f)], cwd=root, startupinfo=SI, creationflags=NO_WINDOW)
                         log(f"Launched game: {game['name']} via {f}")
                         return True
-        if game.get("platform") == "Steam" and game.get("appid"):
-            steam_path = "C:\\Program Files (x86)\\Steam\\steam.exe"
-            if os.path.exists(steam_path):
-                subprocess.Popen([steam_path, f'steam://rungameid/{game["appid"]}'], startupinfo=SI, creationflags=NO_WINDOW)
-                log(f"Launched Steam game: {game['name']}")
-                return True
         log(f"Could not launch game: {game['name']}")
         return False

@@ -21,7 +21,7 @@ def empty_working_set():
                 before = pinfo['memory_info'].rss
                 handle = ctypes.windll.kernel32.OpenProcess(0x1F0FFF, False, pinfo['pid'])
                 if handle:
-                    ctypes.windll.kernel32.SetProcessWorkingSetSize(handle, wintypes.c_size_t(-1), wintypes.c_size_t(-1))
+                    ctypes.windll.kernel32.SetProcessWorkingSetSize(handle, ctypes.c_size_t(-1), ctypes.c_size_t(-1))
                     ctypes.windll.kernel32.CloseHandle(handle)
                     freed_mb += before // (1024 * 1024)
                     count += 1
@@ -53,14 +53,17 @@ def kill_process(pid):
 
 def get_top_memory_processes(count=20):
     procs = []
-    for proc in psutil.process_iter(['pid', 'name', 'memory_percent', 'memory_info', 'cpu_percent', 'status']):
-        try:
-            pinfo = proc.info
-            if pinfo['memory_info']:
-                pinfo['memory_mb'] = pinfo['memory_info'].rss / (1024 * 1024)
-                procs.append(pinfo)
-        except:
-            pass
+    try:
+        for proc in psutil.process_iter(['pid', 'name', 'memory_percent', 'memory_info', 'cpu_percent', 'status']):
+            try:
+                pinfo = proc.info
+                if pinfo['memory_info']:
+                    pinfo['memory_mb'] = pinfo['memory_info'].rss / (1024 * 1024)
+                    procs.append(pinfo)
+            except:
+                pass
+    except:
+        pass
     procs.sort(key=lambda p: p.get('memory_mb', 0), reverse=True)
     return procs[:count]
 

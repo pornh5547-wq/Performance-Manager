@@ -42,9 +42,15 @@ class DashboardPage(ctk.CTkFrame):
 
         ctk.CTkLabel(self.quick_frame, text="Quick Actions", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", padx=12, pady=(8, 5))
 
-        for text, color in [("Quick Cleanup", "#7c3aed"), ("Boost Now", "#16a34a"), ("Flush DNS", "#0891b2")]:
+        actions = [
+            ("Quick Cleanup", "#7c3aed", lambda: self._quick_action("Quick Cleanup")),
+            ("Boost Now", "#16a34a", lambda: self._quick_action("Boost Now")),
+            ("Flush DNS", "#0891b2", lambda: self._quick_action("Flush DNS")),
+        ]
+        for text, color, action in actions:
             ctk.CTkButton(self.quick_frame, text=text, fg_color=color,
-                          hover_color=self._darken(color), height=32, corner_radius=6).pack(fill="x", padx=10, pady=3)
+                          hover_color=self._darken(color), height=32, corner_radius=6,
+                          command=action).pack(fill="x", padx=10, pady=3)
 
     def _darken(self, c):
         r = max(int(c[1:3], 16) - 25, 0)
@@ -98,7 +104,7 @@ class DashboardPage(ctk.CTkFrame):
         if self._pending_refresh:
             self._update_ui()
             self._pending_refresh = False
-            interval = max(self.config.get("monitoring_interval", 3000), 2000)
+            interval = max(int(self.config.get("monitoring_interval", 3000)), 500)
             self.after_id = self.after(interval, self._do_collect_and_update)
         else:
             self.after_id = self.after(100, self._poll_stats)
@@ -170,6 +176,16 @@ class DashboardPage(ctk.CTkFrame):
             self.process_text.delete("1.0", "end")
             self.process_text.insert("1.0", proc_text)
             self.process_text.configure(state="disabled")
+
+    def _quick_action(self, name):
+        from app.config import log
+        log(f"Quick action: {name}")
+        if name == "Quick Cleanup":
+            from app.utils.cleanup import run_full_cleanup
+            threading.Thread(target=run_full_cleanup, daemon=True).start()
+        elif name == "Flush DNS":
+            from app.utils.admin import clear_dns_cache
+            clear_dns_cache()
 
     def on_activate(self):
         pass

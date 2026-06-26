@@ -22,3 +22,8 @@ Thumbs.db
 
 # PyInstaller
 *.manifest
+
+# Logs
+*.log
+err.log
+out.log

@@ -35,32 +35,31 @@ def get_privacy_status():
 def block_telemetry():
     results = []
     try:
-        r = run_admin('Set-Service DiagTrack -StartupType Disabled; Stop-Service DiagTrack -Force')
-        results.append(("DiagTrack Service", "Disabled" if (r and r.returncode == 0) else "Failed"))
-    except:
-        results.append(("DiagTrack Service", "Error"))
-    try:
-        r = run_admin('Set-Service DmwAppPushService -StartupType Disabled; Stop-Service DmwAppPushService -Force')
-        results.append(("Push Service", "Disabled" if (r and r.returncode == 0) else "Failed"))
-    except:
-        results.append(("Push Service", "Error"))
-    try:
-        cmd = 'New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force | Out-Null; Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowTelemetry -Value 0'
+        cmd = '''
+Set-Service DiagTrack -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service DiagTrack -Force -ErrorAction SilentlyContinue;
+Set-Service DmwAppPushService -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service DmwAppPushService -Force -ErrorAction SilentlyContinue;
+$null = New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force;
+Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowTelemetry -Value 0 -ErrorAction SilentlyContinue;
+Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowCortana -Value 0 -Type DWord -ErrorAction SilentlyContinue;
+New-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection" -Name AllowTelemetry -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue
+'''
         r = run_admin(cmd)
-        results.append(("Telemetry Level", "Set to 0" if (r and r.returncode == 0) else "Failed"))
+        ok = r is not None
+        results = [
+            ("DiagTrack Service", "Disabled" if ok else "Failed"),
+            ("Push Service", "Disabled" if ok else "Failed"),
+            ("Telemetry Level", "Set to 0" if ok else "Failed"),
+            ("Cortana", "Disabled" if ok else "Failed"),
+            ("DataCollection Policy", "Set" if ok else "Failed"),
+        ]
     except:
-        results.append(("Telemetry Level", "Error"))
-    try:
-        cmd = 'New-Item -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Force | Out-Null; Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowCortana -Value 0 -Type DWord'
-        r = run_admin(cmd)
-        results.append(("Cortana", "Disabled" if (r and r.returncode == 0) else "Failed"))
-    except:
-        results.append(("Cortana", "Error"))
-    try:
-        r = run_admin('New-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection" -Name AllowTelemetry -Value 0 -PropertyType DWord -Force')
-        results.append(("DataCollection Policy", "Set" if (r and r.returncode == 0) else "Failed"))
-    except:
-        results.append(("DataCollection Policy", "Error"))
+        results = [
+            ("DiagTrack Service", "Error"),
+            ("Push Service", "Error"),
+            ("Telemetry Level", "Error"),
+            ("Cortana", "Error"),
+            ("DataCollection Policy", "Error"),
+        ]
     hosts_blocked = _block_telemetry_hosts()
     results.append(("Telemetry Hosts", "Blocked" if hosts_blocked else "Failed"))
     marker = os.path.join(os.environ.get('LOCALAPPDATA',''),'PMTelemetryBlock')
@@ -73,27 +72,27 @@ def block_telemetry():
 def unblock_telemetry():
     results = []
     try:
-        r = run_admin('Set-Service DiagTrack -StartupType Manual; Start-Service DiagTrack')
-        results.append(("DiagTrack Service", "Enabled" if (r and r.returncode == 0) else "Failed"))
+        cmd = '''
+Set-Service DiagTrack -StartupType Manual -ErrorAction SilentlyContinue; Start-Service DiagTrack -ErrorAction SilentlyContinue;
+Set-Service DmwAppPushService -StartupType Manual -ErrorAction SilentlyContinue; Start-Service DmwAppPushService -ErrorAction SilentlyContinue;
+Remove-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowTelemetry -ErrorAction SilentlyContinue;
+Remove-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowCortana -ErrorAction SilentlyContinue
+'''
+        r = run_admin(cmd)
+        ok = r is not None
+        results = [
+            ("DiagTrack Service", "Enabled" if ok else "Failed"),
+            ("Push Service", "Enabled" if ok else "Failed"),
+            ("Telemetry Level", "Reset" if ok else "Failed"),
+            ("Cortana", "Enabled" if ok else "Failed"),
+        ]
     except:
-        results.append(("DiagTrack Service", "Error"))
-    try:
-        r = run_admin('Set-Service DmwAppPushService -StartupType Manual; Start-Service DmwAppPushService')
-        results.append(("Push Service", "Enabled" if (r and r.returncode == 0) else "Failed"))
-    except:
-        results.append(("Push Service", "Error"))
-    try:
-        cmd = 'Remove-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowTelemetry -ErrorAction SilentlyContinue'
-        run_admin(cmd)
-        results.append(("Telemetry Level", "Reset"))
-    except:
-        results.append(("Telemetry Level", "Error"))
-    try:
-        cmd = 'Remove-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection" -Name AllowCortana -ErrorAction SilentlyContinue'
-        run_admin(cmd)
-        results.append(("Cortana", "Enabled"))
-    except:
-        results.append(("Cortana", "Error"))
+        results = [
+            ("DiagTrack Service", "Error"),
+            ("Push Service", "Error"),
+            ("Telemetry Level", "Error"),
+            ("Cortana", "Error"),
+        ]
     hosts_file = os.path.join(os.environ.get('SystemRoot','C:\\Windows'),'System32','drivers','etc','hosts')
     _remove_telemetry_hosts(hosts_file)
     results.append(("Telemetry Hosts", "Unblocked"))

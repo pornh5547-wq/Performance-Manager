@@ -69,8 +69,8 @@ class StartupManagerPage(ctk.CTkFrame):
             row = ctk.CTkFrame(self.list_frame, fg_color=("gray90", "gray17"), height=32)
             row.pack(fill="x", padx=5, pady=1)
 
-            switch = ctk.CTkSwitch(row, text="", onvalue=True, offvalue=False, width=30)
-            switch.select()
+            switch = ctk.CTkSwitch(row, text="", onvalue=True, offvalue=False, width=30,
+                                   command=lambda n=item["name"], c=item.get("command",""), l=item.get("location",""): self._toggle_startup(n, c, l))
             switch.pack(side="left", padx=(8, 5))
             self.checkboxes[item["name"]] = switch
 
@@ -89,3 +89,13 @@ class StartupManagerPage(ctk.CTkFrame):
             else:
                 loc_display = loc[:20]
             ctk.CTkLabel(row, text=loc_display, font=ctk.CTkFont(size=11), text_color="gray", width=100, anchor="w").pack(side="right", padx=5)
+
+    def _toggle_startup(self, name, command, location):
+        self.status_label.configure(text=f"Toggling {name}...")
+        def task():
+            ok = self.manager.disable_startup_item(name, location)
+            self.after(0, lambda: self.status_label.configure(
+                text=f"{'Disabled' if ok else 'Failed'} {name}",
+                text_color="#4ade80" if ok else "#ef4444"))
+            self.after(1000, self.load_items)
+        threading.Thread(target=task, daemon=True).start()

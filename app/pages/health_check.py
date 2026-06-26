@@ -88,8 +88,9 @@ class HealthCheckPage(ctk.CTkFrame):
                 sfc = health.get("sfc_status", "Unknown")
                 self.checks["SFC File Integrity"].configure(text=sfc,
                     text_color="#4ade80" if sfc == "Healthy" else "#ef4444")
-                smart_ok = all(d.get("status", "").lower() == "ok" for d in smart) if smart else False
-                smart_text = f"{len(smart)} drives OK" if smart_ok else f"{len(smart)} drives, issues" if smart else "N/A"
+                smart_ok = all(d.get("status", "").strip().lower() in ("ok", "good") for d in smart) if smart else False
+                smart_count = len(smart)
+                smart_text = f"{smart_count} drives OK" if smart_ok else f"{smart_count} drives, issues" if smart else "N/A"
                 self.checks["Disk SMART Status"].configure(text=smart_text,
                     text_color="#4ade80" if smart_ok else "#ef4444" if smart else "#64748b")
                 trim_ok = trim.get("trim_enabled")

@@ -19,12 +19,24 @@ BLOATWARE_LIST = [
     "Microsoft.Windows.DevHome", "Microsoft.Whiteboard",
     "SpotifyAB.SpotifyMusic", "Disney.37853FC22B2CE", "Facebook.Facebook",
     "Instagram.Instagram", "TikTok.TikTok", "Netflix.Netflix",
+    "Clipchamp.Clipchamp", "Microsoft.549981C3F5F10", "Microsoft.AsyncTextService",
+    "Microsoft.Copilot", "Microsoft.FamilySafety", "Microsoft.GamingApp",
+    "Microsoft.MicrosoftJournal", "Microsoft.MixedReality",
+    "Microsoft.Office.Sway", "Microsoft.OutlookForWindows",
+    "Microsoft.StorePurchaseApp", "Microsoft.WidgetPlatformRuntime",
+    "Microsoft.Windows.Calculator", "Microsoft.Windows.Photos",
+    "Microsoft.windowscommunicationsapps",
+    "Microsoft.WindowsNotepad", "Microsoft.WindowsVoiceRecorder",
+    "Microsoft.XboxGamingOverlay_Secure",
+    "MicrosoftCorporationII.MicrosoftFamily", "MicrosoftWindows.CrossDevice",
+    "MicrosoftWindows.UndockedDevKit",
 ]
 
 def list_installed_bloatware():
-    cmd = 'Get-AppxPackage | Select-Object Name, PackageFullName, InstallLocation | ConvertTo-Json'
+    cmd = 'Get-AppxPackage -AllUsers | Select-Object Name, PackageFullName, InstallLocation | ConvertTo-Json'
     result = run(cmd)
     installed = []
+    seen = set()
     if result and result.stdout.strip():
         try:
             packages = json.loads(result.stdout)
@@ -32,22 +44,52 @@ def list_installed_bloatware():
                 packages = [packages]
             for pkg in packages:
                 name = pkg.get("Name", "")
-                if name in BLOATWARE_LIST:
+                if name in BLOATWARE_LIST and name not in seen:
+                    seen.add(name)
                     installed.append(pkg)
+        except:
+            pass
+    cmd2 = 'Get-AppxProvisionedPackage -Online | Select-Object DisplayName, PackageName | ConvertTo-Json'
+    result2 = run(cmd2, timeout=30)
+    if result2 and result2.stdout.strip():
+        try:
+            prov_pkgs = json.loads(result2.stdout)
+            if isinstance(prov_pkgs, dict):
+                prov_pkgs = [prov_pkgs]
+            for pkg in prov_pkgs:
+                name = pkg.get("DisplayName", "")
+                if name in BLOATWARE_LIST and name not in seen:
+                    seen.add(name)
+                    installed.append({
+                        "Name": name,
+                        "PackageFullName": pkg.get("PackageName", ""),
+                        "InstallLocation": "",
+                        "Provisioned": True,
+                    })
         except:
             pass
     return installed
 
-def uninstall_package(full_name):
-    r = run_admin(f'Get-AppxPackage "{full_name}" | Remove-AppxPackage')
-    return r is not None and r.returncode == 0
+def uninstall_package(full_name, provisioned=False):
+    if provisioned:
+        r = run_admin(f'Get-AppxProvisionedPackage -Online | Where-Object {{$_.PackageName -eq "{full_name}"}} | Remove-AppxProvisionedPackage -AllUsers')
+    else:
+        r = run_admin(f'Get-AppxPackage "{full_name}" | Remove-AppxPackage -AllUsers')
+    if r is None:
+        return False
+    return r.returncode == 0 or (r.stdout and "success" in r.stdout.lower())
 
 def uninstall_all():
     results = []
     for pkg in list_installed_bloatware():
         name = pkg.get("Name", "Unknown")
-        ok = uninstall_package(pkg.get("PackageFullName", ""))
-        results.append({"name": name, "success": ok})
+        full = pkg.get("PackageFullName", "")
+        if not full:
+            results.append({"name": name, "success": False})
+            continue
+        ok1 = uninstall_package(full, provisioned=False)
+        ok2 = uninstall_package(full, provisioned=True)
+        results.append({"name": name, "success": ok1 or ok2})
     return results
 
 def reinstall_package(name):

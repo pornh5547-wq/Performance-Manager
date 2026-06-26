@@ -82,8 +82,7 @@ class NetworkRepair:
     def renew_ip(callback=None):
         def task():
             log("Releasing and renewing IP...")
-            run_admin('ipconfig /release')
-            result = run_admin('ipconfig /renew')
+            result = run_admin('ipconfig /release; ipconfig /renew')
             log(f"IP renew completed")
             if callback:
                 callback("ip_renew", result is not None, "")
@@ -93,18 +92,9 @@ class NetworkRepair:
     def reset_all(callback=None):
         def task():
             log("Running full network reset...")
-            results = {}
-            for name, cmd in [
-                ("dns_flush", 'ipconfig /flushdns'),
-                ("winsock", 'netsh winsock reset'),
-                ("ip_reset", 'netsh int ip reset'),
-            ]:
-                r = run_admin(cmd)
-                results[name] = r is not None
-            run_admin('ipconfig /release')
-            r = run_admin('ipconfig /renew')
-            results["ip_renew"] = r is not None
+            r = run_admin('ipconfig /flushdns; netsh winsock reset; netsh int ip reset; ipconfig /release; ipconfig /renew')
+            ok = r is not None
             log(f"Full network reset completed")
             if callback:
-                callback("network_reset_all", all(results.values()), str(results))
+                callback("network_reset_all", ok, "ok" if ok else "failed")
         threading.Thread(target=task, daemon=True).start()
