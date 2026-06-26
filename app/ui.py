@@ -114,6 +114,7 @@ class PerformanceManagerApp(ctk.CTk):
         self.geometry("1200x780")
         self.minsize(960, 640)
 
+        self._show_startup_overlay()
         self._build_layout()
         self._bind_events()
         self._post_init()
@@ -244,21 +245,18 @@ class PerformanceManagerApp(ctk.CTk):
     def _bind_events(self):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def _post_init(self):
-        self.toast = ToastManager(self)
-        self._switch_page("dashboard")
-        self._show_scan_overlay()
-        self.scan_manager.start_scan(callback=self._on_scan_complete)
-
-    def _show_scan_overlay(self):
-        self.overlay = ScanOverlay(self.content_frame, self.scan_manager, on_complete=self._on_overlay_done)
+    def _show_startup_overlay(self):
+        self.overlay = ScanOverlay(self, self.scan_manager, on_complete=self._on_startup_done)
         self.overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
         self.overlay.lift()
 
-    def _on_scan_complete(self):
-        pass
+    def _post_init(self):
+        self.toast = ToastManager(self)
+        self._switch_page("dashboard")
+        self.update()
+        self.scan_manager.start_scan()
 
-    def _on_overlay_done(self):
+    def _on_startup_done(self):
         self.overlay = None
         self.status_text.configure(text="Ready")
         self._update_scan_status()
